@@ -1,5 +1,6 @@
 export interface Product {
   productId?: string; 
+  isOutOfStock?: boolean;    
   position: number;
   showProduct: boolean;
   productName: { mr: string; en: string; hi: string };
@@ -13,5 +14,6 @@ export interface Product {
     price: number;
     compareAtPrice: number;
     inventoryQuantity: number;
+    showVariant?: boolean; 
   }>;
 }

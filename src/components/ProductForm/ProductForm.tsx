@@ -10,12 +10,9 @@ import {
   Typography,
   Space,
   Select,
+  Switch,
 } from "antd";
-import {
-  addProduct,
-  getProductById,
-  updateProduct,
-} from "@/lib/productService";
+import { addProduct, getProductById, updateProduct } from "@/lib/productService";
 import { useRouter } from "next/navigation";
 import { Product } from "@/types/product";
 
@@ -28,13 +25,15 @@ type Props = {
 
 const emptyProduct: Product = {
   position: 0,
-  showProduct: true,
+  showProduct: true,          // NEW: default true
+  isOutOfStock: false,        // NEW: default false
   productName: { mr: "", en: "", hi: "" },
   productDescription: { mr: "", en: "", hi: "" },
   productType: { mr: "", en: "", hi: "" },
   vendor: "",
   productImages: [""],
-  mapVariant: [],
+  chemicalComposition: [] as string[],    // ensure array exists
+  mapVariant: [] as Product["mapVariant"],           // each item may have showVariant
 };
 
 const PRODUCT_TYPES_MR = [
@@ -51,22 +50,50 @@ export default function ProductForm({ mode, productId }: Props) {
   const [product, setProduct] = useState<Product>(emptyProduct);
   const router = useRouter();
 
-  useEffect(() => {
-    if (mode === "edit" && productId) {
-      getProductById(productId).then((data) => {
-        if (data) {
-          setProduct(data);
-          form.setFieldsValue(data);
-        }
-      });
-    }
-  }, [mode, productId]);
+useEffect(() => {
+  if (mode === "edit" && productId) {
+    getProductById(productId).then((data) => {
+      if (!data) return;
+
+      // Put base first, then incoming data, then defaults for missing fields,
+      // and finally normalized mapVariant. No duplicate keys before the end.
+      const withDefaults: Product = {
+        ...emptyProduct,                // base shape
+        ...data,                        // incoming values
+        showProduct: data.showProduct ?? true,
+        isOutOfStock: data.isOutOfStock ?? false,
+        chemicalComposition: data.chemicalComposition ?? [],
+        mapVariant: (data.mapVariant ?? []).map((v: any) => ({
+          ...v,
+          showVariant: v?.showVariant ?? true,
+        })),
+      };
+
+      setProduct(withDefaults);
+      form.setFieldsValue(withDefaults);
+    });
+  } else {
+    form.setFieldsValue(emptyProduct);
+  }
+}, [mode, productId]);
 
   const onFinish = async (values: Product) => {
+    // ensure arrays/booleans are shaped correctly
+    const payload: Product = {
+      ...values,
+      showProduct: !!values.showProduct,
+      isOutOfStock: !!(values as any).isOutOfStock,
+      chemicalComposition: values.chemicalComposition ?? [],
+      mapVariant: (values.mapVariant ?? []).map((v: any) => ({
+        showVariant: v?.showVariant ?? true,
+        ...v,
+      })),
+    };
+
     if (mode === "add") {
-      await addProduct(values);
+      await addProduct(payload);
     } else if (mode === "edit" && productId) {
-      await updateProduct(productId, values);
+      await updateProduct(productId, payload);
     }
     router.push("/products");
   };
@@ -84,26 +111,31 @@ export default function ProductForm({ mode, productId }: Props) {
               onBlur={(e) => {
                 try {
                   const parsed = JSON.parse(e.target.value);
-                  form.setFieldsValue(parsed);
-                } catch (err) {
+                  // apply same defaults for missing booleans
+                  const withDefaults = {
+                    ...emptyProduct,
+                    ...parsed,
+                    mapVariant: (parsed.mapVariant ?? []).map((v: any) => ({
+                      showVariant: v?.showVariant ?? true,
+                      ...v,
+                    })),
+                  };
+                  form.setFieldsValue(withDefaults);
+                } catch {
                   alert("❌ Invalid JSON format");
                 }
               }}
-              placeholder='Paste full product object here...'
+              placeholder="Paste full product object here..."
             />
           </Form.Item>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-            ⚠️ Paste full product JSON here to prefill the form. It must match your Product structure.
+            ⚠️ Must match your Product structure.
           </Typography.Paragraph>
         </Card>
       )}
 
-      <Form
-        layout="vertical"
-        form={form}
-        onFinish={onFinish}
-        initialValues={product}
-      >
+      <Form layout="vertical" form={form} onFinish={onFinish} initialValues={product}>
+        {/* Top meta */}
         <Form.Item name="position" label="📍 Position">
           <InputNumber min={0} style={{ width: "100%" }} />
         </Form.Item>
@@ -112,20 +144,40 @@ export default function ProductForm({ mode, productId }: Props) {
           <Input />
         </Form.Item>
 
-        <Divider>🌐 Marathi Content</Divider>
+        {/* NEW: Booleans */}
+        <Space size="large" style={{ marginBottom: 8 }}>
+          <Form.Item
+            name="showProduct"
+            label="Show Product"
+            valuePropName="checked"
+            tooltip="Controls visibility in listing"
+            style={{ marginBottom: 0 }}
+          >
+            <Switch />
+          </Form.Item>
 
-        <Form.Item name={["productName", "mr"]} label="Product Name (Marathi)">
+          <Form.Item
+            name="isOutOfStock"
+            label="Out of Stock"
+            valuePropName="checked"
+            tooltip="Mark entire product as out of stock"
+            style={{ marginBottom: 0 }}
+          >
+            <Switch />
+          </Form.Item>
+        </Space>
+
+        <Divider>🌐 ENGLISH Content</Divider>
+
+        <Form.Item name={["productName", "en"]} label="Product Name (ENGLISH)">
           <Input />
         </Form.Item>
 
-        <Form.Item
-          name={["productDescription", "mr"]}
-          label="Description (Marathi)"
-        >
+        <Form.Item name={["productDescription", "en"]} label="Description (ENGLISH)">
           <Input.TextArea rows={3} />
         </Form.Item>
 
-        <Form.Item name={["productType", "mr"]} label="Product Type (Marathi)">
+        <Form.Item name={["productType", "en"]} label="Product Type (ENGLISH)">
           <Select placeholder="Select product type">
             {PRODUCT_TYPES_MR.map((type) => (
               <Option key={type} value={type}>
@@ -141,17 +193,11 @@ export default function ProductForm({ mode, productId }: Props) {
           {(fields, { add, remove }) => (
             <>
               {fields.map(({ key, name, ...restField }) => (
-                <Space
-                  key={key}
-                  style={{ display: "flex", marginBottom: 8 }}
-                  align="baseline"
-                >
+                <Space key={key} style={{ display: "flex", marginBottom: 8 }} align="baseline">
                   <Form.Item
                     {...restField}
                     name={name}
-                    rules={[
-                      { required: true, message: "Please enter image URL" },
-                    ]}
+                    rules={[{ required: true, message: "Please enter image URL" }]}
                   >
                     <Input placeholder="Image URL" />
                   </Form.Item>
@@ -175,17 +221,13 @@ export default function ProductForm({ mode, productId }: Props) {
           {(fields, { add, remove }) => (
             <>
               {fields.map(({ key, name, ...restField }) => (
-                <Space
-                  key={key}
-                  style={{ display: "flex", marginBottom: 8 }}
-                  align="baseline"
-                >
+                <Space key={key} style={{ display: "flex", marginBottom: 8 }} align="baseline">
                   <Form.Item
                     {...restField}
                     name={name}
                     rules={[{ required: true, message: "Enter composition" }]}
                   >
-                    <Input placeholder="e.g., Carbendazim 12%" />
+                    <Input placeholder="e.g., Emamectin 1.5% + Fipronil 3.5% SC" />
                   </Form.Item>
                   <Button danger onClick={() => remove(name)}>
                     Remove
@@ -218,13 +260,24 @@ export default function ProductForm({ mode, productId }: Props) {
                     </Button>
                   }
                 >
+                  {/* NEW: showVariant toggle */}
+                  <Form.Item
+                    {...restField}
+                    name={[name, "showVariant"]}
+                    label="Show Variant"
+                    valuePropName="checked"
+                    tooltip="Controls visibility of this specific variant"
+                  >
+                    <Switch defaultChecked />
+                  </Form.Item>
+
                   <Form.Item
                     {...restField}
                     name={[name, "title", "mr"]}
                     label="Variant Title (Marathi)"
                     rules={[{ required: true, message: "Please enter title" }]}
                   >
-                    <Input />
+                    <Input placeholder="e.g., 250 ml" />
                   </Form.Item>
 
                   <Form.Item
@@ -236,11 +289,7 @@ export default function ProductForm({ mode, productId }: Props) {
                     <InputNumber min={0} style={{ width: "100%" }} />
                   </Form.Item>
 
-                  <Form.Item
-                    {...restField}
-                    name={[name, "compareAtPrice"]}
-                    label="Compare At Price"
-                  >
+                  <Form.Item {...restField} name={[name, "compareAtPrice"]} label="Compare At Price">
                     <InputNumber min={0} style={{ width: "100%" }} />
                   </Form.Item>
 
@@ -254,7 +303,15 @@ export default function ProductForm({ mode, productId }: Props) {
                 </Card>
               ))}
               <Form.Item>
-                <Button type="dashed" onClick={() => add()} block>
+                <Button
+                  type="dashed"
+                  onClick={() =>
+                    add({
+                      showVariant: true, // default on add
+                    })
+                  }
+                  block
+                >
                   ➕ Add Variant
                 </Button>
               </Form.Item>
