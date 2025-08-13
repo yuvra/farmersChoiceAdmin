@@ -16,85 +16,104 @@ import { addProduct, getProductById, updateProduct } from "@/lib/productService"
 import { useRouter } from "next/navigation";
 import { Product } from "@/types/product";
 
-const { Option } = Select;
-
 type Props = {
   mode: "add" | "edit";
   productId?: string;
 };
 
+// 🔁 Bilingual catalog for product types
+const PRODUCT_TYPES = [
+  { en: "Fungicide", mr: "बुरशीनाशक" },
+  { en: "Insecticide", mr: "कीटकनाशक" },
+  { en: "Herbicide", mr: "तणनाशक" },
+  { en: "Organic Farming", mr: "सेंद्रिय शेती" },
+  { en: "Plant Growth Promoter", mr: "वाढ प्रवर्तक" },
+  { en: "Nutrients (Fertilizers)", mr: "पोषक तत्त्वे (खते)" },
+];
+
 const emptyProduct: Product = {
   position: 0,
-  showProduct: true,          // NEW: default true
-  isOutOfStock: false,        // NEW: default false
+  showProduct: true,
+  isOutOfStock: false,
   productName: { mr: "", en: "", hi: "" },
   productDescription: { mr: "", en: "", hi: "" },
   productType: { mr: "", en: "", hi: "" },
   vendor: "",
   productImages: [""],
-  chemicalComposition: [] as string[],    // ensure array exists
-  mapVariant: [] as Product["mapVariant"],           // each item may have showVariant
+  chemicalComposition: [] as string[],
+  mapVariant: [] as Product["mapVariant"],
 };
-
-const PRODUCT_TYPES_MR = [
-  "बुरशीनाशक",
-  "कीटकनाशक",
-  "तणनाशक",
-  "सेंद्रिय शेती",
-  "वाढ प्रवर्तक",
-  "पोषक तत्त्वे (खते)",
-];
 
 export default function ProductForm({ mode, productId }: Props) {
   const [form] = Form.useForm();
-  const [product, setProduct] = useState<Product>(emptyProduct);
   const router = useRouter();
 
-useEffect(() => {
-  if (mode === "edit" && productId) {
-    getProductById(productId).then((data) => {
-      if (!data) return;
+  // ---------- helpers for product type ----------
+  const setTypeByIndex = (idx: number | undefined) => {
+    if (idx == null) return;
+    const t = PRODUCT_TYPES[idx];
+    const cur = form.getFieldValue("productType") || {};
+    form.setFieldsValue({ productType: { ...cur, en: t.en, mr: t.mr } });
+  };
 
-      // Put base first, then incoming data, then defaults for missing fields,
-      // and finally normalized mapVariant. No duplicate keys before the end.
-      const withDefaults: Product = {
-        ...emptyProduct,                // base shape
-        ...data,                        // incoming values
-        showProduct: data.showProduct ?? true,
-        isOutOfStock: data.isOutOfStock ?? false,
-        chemicalComposition: data.chemicalComposition ?? [],
-        mapVariant: (data.mapVariant ?? []).map((v: any) => ({
-          ...v,
-          showVariant: v?.showVariant ?? true,
-        })),
-      };
+  const getSelectedTypeIndex = () => {
+    const curEn: string | undefined = form.getFieldValue(["productType", "en"]);
+    const curMr: string | undefined = form.getFieldValue(["productType", "mr"]);
+    const i = PRODUCT_TYPES.findIndex((t) => t.en === curEn || t.mr === curMr);
+    return i >= 0 ? i : undefined;
+  };
 
-      setProduct(withDefaults);
-      form.setFieldsValue(withDefaults);
-    });
-  } else {
-    form.setFieldsValue(emptyProduct);
-  }
-}, [mode, productId]);
+  // ---------- load for edit / set defaults ----------
+  useEffect(() => {
+    const init = async () => {
+      if (mode === "edit" && productId) {
+        const data = await getProductById(productId);
+        if (!data) return;
 
+        const withDefaults: Product = {
+          ...emptyProduct,
+          ...data,
+          showProduct: data.showProduct ?? true,
+          isOutOfStock: data.isOutOfStock ?? false,
+          chemicalComposition: data.chemicalComposition ?? [],
+          mapVariant: (data.mapVariant ?? []).map((v: any) => ({
+            ...v,
+            showVariant: v?.showVariant ?? true,
+            title: {
+              en: v?.title?.en ?? "",
+              mr: v?.title?.mr ?? "",
+            },
+          })),
+        };
+        form.setFieldsValue(withDefaults);
+      } else {
+        form.setFieldsValue(emptyProduct);
+      }
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, productId]);
+
+  // ---------- submit ----------
   const onFinish = async (values: Product) => {
-    // ensure arrays/booleans are shaped correctly
     const payload: Product = {
       ...values,
       showProduct: !!values.showProduct,
       isOutOfStock: !!(values as any).isOutOfStock,
       chemicalComposition: values.chemicalComposition ?? [],
       mapVariant: (values.mapVariant ?? []).map((v: any) => ({
-        showVariant: v?.showVariant ?? true,
         ...v,
+        showVariant: v?.showVariant ?? true,
+        title: {
+          en: v?.title?.en ?? "",
+          mr: v?.title?.mr ?? "",
+        },
       })),
     };
 
-    if (mode === "add") {
-      await addProduct(payload);
-    } else if (mode === "edit" && productId) {
-      await updateProduct(productId, payload);
-    }
+    if (mode === "add") await addProduct(payload);
+    else if (mode === "edit" && productId) await updateProduct(productId, payload);
+
     router.push("/products");
   };
 
@@ -110,14 +129,17 @@ useEffect(() => {
               rows={6}
               onBlur={(e) => {
                 try {
-                  const parsed = JSON.parse(e.target.value);
-                  // apply same defaults for missing booleans
+                  const parsed = JSON.parse(e.target.value || "{}");
                   const withDefaults = {
                     ...emptyProduct,
                     ...parsed,
                     mapVariant: (parsed.mapVariant ?? []).map((v: any) => ({
-                      showVariant: v?.showVariant ?? true,
                       ...v,
+                      showVariant: v?.showVariant ?? true,
+                      title: {
+                        en: v?.title?.en ?? "",
+                        mr: v?.title?.mr ?? "",
+                      },
                     })),
                   };
                   form.setFieldsValue(withDefaults);
@@ -134,7 +156,7 @@ useEffect(() => {
         </Card>
       )}
 
-      <Form layout="vertical" form={form} onFinish={onFinish} initialValues={product}>
+      <Form layout="vertical" form={form} onFinish={onFinish}>
         {/* Top meta */}
         <Form.Item name="position" label="📍 Position">
           <InputNumber min={0} style={{ width: "100%" }} />
@@ -144,7 +166,7 @@ useEffect(() => {
           <Input />
         </Form.Item>
 
-        {/* NEW: Booleans */}
+        {/* Booleans */}
         <Space size="large" style={{ marginBottom: 8 }}>
           <Form.Item
             name="showProduct"
@@ -167,28 +189,48 @@ useEffect(() => {
           </Form.Item>
         </Space>
 
-        <Divider>🌐 ENGLISH Content</Divider>
+        {/* Product Type */}
+        <Divider>🏷 Product Type</Divider>
+        <Form.Item label="Choose Type (EN — MR)">
+          <Select
+            showSearch
+            placeholder="Select product type"
+            value={getSelectedTypeIndex()}
+            onChange={setTypeByIndex}
+            allowClear
+            options={PRODUCT_TYPES.map((t, i) => ({
+              label: `${t.en} — ${t.mr}`,
+              value: i,
+            }))}
+            filterOption={(input, option) =>
+              (option?.label as string).toLowerCase().includes(input.toLowerCase())
+            }
+          />
+        </Form.Item>
 
-        <Form.Item name={["productName", "en"]} label="Product Name (ENGLISH)">
+        <Divider>🌐 ENGLISH Content</Divider>
+        <Form.Item name={["productName", "en"]} label="Product Name (English)">
           <Input />
         </Form.Item>
-
-        <Form.Item name={["productDescription", "en"]} label="Description (ENGLISH)">
+        <Form.Item name={["productDescription", "en"]} label="Description (English)">
           <Input.TextArea rows={3} />
         </Form.Item>
+        <Form.Item name={["productType", "en"]} label="Product Type (English)">
+          <Input placeholder="e.g., Insecticide" />
+        </Form.Item>
 
-        <Form.Item name={["productType", "en"]} label="Product Type (ENGLISH)">
-          <Select placeholder="Select product type">
-            {PRODUCT_TYPES_MR.map((type) => (
-              <Option key={type} value={type}>
-                {type}
-              </Option>
-            ))}
-          </Select>
+        <Divider>🌾 मराठी माहिती</Divider>
+        <Form.Item name={["productName", "mr"]} label="उत्पादनाचे नाव (मराठी)">
+          <Input />
+        </Form.Item>
+        <Form.Item name={["productDescription", "mr"]} label="वर्णन (मराठी)">
+          <Input.TextArea rows={3} />
+        </Form.Item>
+        <Form.Item name={["productType", "mr"]} label="उत्पादन प्रकार (मराठी)">
+          <Input placeholder="उदा., कीटकनाशक" />
         </Form.Item>
 
         <Divider>🖼 Product Images</Divider>
-
         <Form.List name="productImages">
           {(fields, { add, remove }) => (
             <>
@@ -216,7 +258,6 @@ useEffect(() => {
         </Form.List>
 
         <Divider>🧪 Chemical Composition</Divider>
-
         <Form.List name="chemicalComposition">
           {(fields, { add, remove }) => (
             <>
@@ -244,7 +285,6 @@ useEffect(() => {
         </Form.List>
 
         <Divider>📦 Variants</Divider>
-
         <Form.List name="mapVariant">
           {(fields, { add, remove }) => (
             <>
@@ -260,7 +300,6 @@ useEffect(() => {
                     </Button>
                   }
                 >
-                  {/* NEW: showVariant toggle */}
                   <Form.Item
                     {...restField}
                     name={[name, "showVariant"]}
@@ -273,11 +312,20 @@ useEffect(() => {
 
                   <Form.Item
                     {...restField}
-                    name={[name, "title", "mr"]}
-                    label="Variant Title (Marathi)"
-                    rules={[{ required: true, message: "Please enter title" }]}
+                    name={[name, "title", "en"]}
+                    label="Variant Title (English)"
+                    rules={[{ required: true, message: "Please enter title (EN)" }]}
                   >
                     <Input placeholder="e.g., 250 ml" />
+                  </Form.Item>
+
+                  <Form.Item
+                    {...restField}
+                    name={[name, "title", "mr"]}
+                    label="Variant Title (Marathi)"
+                    rules={[{ required: true, message: "Please enter title (MR)" }]}
+                  >
+                    <Input placeholder="उदा., 250 ml" />
                   </Form.Item>
 
                   <Form.Item
@@ -302,12 +350,14 @@ useEffect(() => {
                   </Form.Item>
                 </Card>
               ))}
+
               <Form.Item>
                 <Button
                   type="dashed"
                   onClick={() =>
                     add({
-                      showVariant: true, // default on add
+                      showVariant: true,
+                      title: { en: "", mr: "" },
                     })
                   }
                   block
