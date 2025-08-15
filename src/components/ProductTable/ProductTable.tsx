@@ -26,9 +26,9 @@ function useDebouncedValue<T>(value: T, delay = 300) {
 const ProductTable = ({ products, showFilter = true }: Props) => {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [showOnly, setShowOnly] = useState<"all" | "true" | "false">("true");
   const debouncedQuery = useDebouncedValue(query, 300);
 
-  // Build normalized type -> display label map (English)
   const typeMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const p of products) {
@@ -44,7 +44,6 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
     [typeMap]
   );
 
-  // Prepare a preprocessed list for fuzzy search (flatten English fields)
   const indexList = useMemo(() => {
     return products.map((p) => ({
       ...p,
@@ -57,12 +56,11 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
     }));
   }, [products]);
 
-  // Fuse instance (typo tolerant)
   const fuse = useMemo(() => {
     return new Fuse(indexList, {
       includeScore: true,
-      threshold: 0.35,        // ↑ more tolerant (0.0 exact … 1.0 very fuzzy)
-      ignoreLocation: true,   // match anywhere in the string
+      threshold: 0.35,
+      ignoreLocation: true,
       minMatchCharLength: 2,
       keys: [
         "productName.en",
@@ -75,25 +73,12 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
     });
   }, [indexList]);
 
-  // Default to "Fungicide" only when filter is shown and present (English)
-  // useEffect(() => {
-  //   if (!showFilter) {
-  //     setSelectedType(null);
-  //     return;
-  //   }
-  //   const fungKey = norm("Fungicide");
-  //   if (typeMap.has(fungKey)) setSelectedType(fungKey);
-  //   else setSelectedType(null);
-  // }, [showFilter, typeMap]);
-
-  // Fuzzy search first (covers exact + typos), then apply type filter
   const displayedProducts = useMemo(() => {
     let list = indexList;
 
     const q = debouncedQuery.trim();
     if (q) {
       const results = fuse.search(q);
-      // Keep Fuse order (best matches first)
       list = results.map((r) => r.item);
     }
 
@@ -101,14 +86,18 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
       list = list.filter((p) => norm(p.productType?.en) === selectedType);
     }
 
-    return list;
-  }, [indexList, fuse, debouncedQuery, showFilter, selectedType]);
+    if (showOnly !== "all") {
+      const boolVal = showOnly === "true";
+      list = list.filter((p) => p.showProduct === boolVal);
+    }
 
-  const showingAll = (!showFilter || !selectedType) && !debouncedQuery;
+    return list;
+  }, [indexList, fuse, debouncedQuery, showFilter, selectedType, showOnly]);
+
+  const showingAll = (!showFilter || !selectedType) && !debouncedQuery && showOnly === "all";
 
   return (
     <div style={{ padding: 24 }}>
-      {/* Top bar */}
       <div
         style={{
           marginBottom: 16,
@@ -136,23 +125,29 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
           />
           {showFilter && (
             <>
-              <Text style={{ color: "#FFF" }} strong>
-                Filter by Type:{" "}
-              </Text>
               <Select
                 allowClear
                 placeholder="Select product type"
                 value={selectedType ?? undefined}
                 onChange={(value) => setSelectedType(value ?? null)}
-                style={{ width: 220 }}
+                style={{ width: 200 }}
                 options={typeOptions}
+              />
+              <Select
+                value={showOnly}
+                onChange={(v) => setShowOnly(v)}
+                style={{ width: 160 }}
+                options={[
+                  { label: "All Products", value: "all" },
+                  { label: "Visible Only", value: "true" },
+                  { label: "Hidden Only", value: "false" },
+                ]}
               />
             </>
           )}
         </div>
       </div>
 
-      {/* Product Grid */}
       <Row gutter={[16, 16]}>
         {displayedProducts.map((product: Product) => (
           <Col xs={24} sm={12} md={8} lg={6} key={product.productId}>
