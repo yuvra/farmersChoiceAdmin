@@ -21,5 +21,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/ordersPage', '/products', '/analytics'], // secure these routes
+  matcher: ['/ordersPage', '/products', '/analytics', '/'], // secure these routes
 };
