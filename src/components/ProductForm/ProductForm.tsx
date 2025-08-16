@@ -24,7 +24,7 @@ type Props = {
 // 🔁 Bilingual catalog for product types
 const PRODUCT_TYPES = [
   { en: "Fungicide", mr: "बुरशीनाशक" },
-  { en: "Insecticide", mr: "कीटकनाशक" },
+  { en: "Insecticides", mr: "कीटकनाशक" },
   { en: "Herbicide", mr: "तणनाशक" },
   { en: "Organic Farming", mr: "सेंद्रिय शेती" },
   { en: "Plant Growth Promoter", mr: "वाढ प्रवर्तक" },
@@ -96,25 +96,43 @@ export default function ProductForm({ mode, productId }: Props) {
 
   // ---------- submit ----------
   const onFinish = async (values: Product) => {
-    const payload: Product = {
-      ...values,
-      showProduct: !!values.showProduct,
-      isOutOfStock: !!(values as any).isOutOfStock,
-      chemicalComposition: values.chemicalComposition ?? [],
-      mapVariant: (values.mapVariant ?? []).map((v: any) => ({
-        ...v,
-        showVariant: v?.showVariant ?? true,
-        title: {
-          en: v?.title?.en ?? "",
-          mr: v?.title?.mr ?? "",
-        },
-      })),
-    };
+      console.log("*** Form Values:", values);
 
-    if (mode === "add") await addProduct(payload);
-    else if (mode === "edit" && productId) await updateProduct(productId, payload);
+    // Set productType from selected index
+    const selectedIndex = form.getFieldValue("selectedTypeIndex");
 
-    router.push("/products");
+    console.log("Selected Type Index:", PRODUCT_TYPES[selectedIndex]);
+
+      // If a type is selected, update the productType fields
+      if (selectedIndex !== undefined) {
+          const selectedType = PRODUCT_TYPES[selectedIndex];
+          values.productType = {
+              en: selectedType.en,
+              mr: selectedType.mr,
+              hi: "",
+          };
+      }
+
+      const payload: Product = {
+          ...values,
+          showProduct: !!values.showProduct,
+          isOutOfStock: !!(values as any).isOutOfStock,
+          chemicalComposition: values.chemicalComposition ?? [],
+          mapVariant: (values.mapVariant ?? []).map((v: any) => ({
+              ...v,
+              showVariant: v?.showVariant ?? true,
+              title: {
+                  en: v?.title?.en ?? "",
+                  mr: v?.title?.mr ?? "",
+              },
+          })),
+      };
+
+      if (mode === "add") await addProduct(payload);
+      else if (mode === "edit" && productId)
+          await updateProduct(productId, payload);
+
+      router.push("/products");
   };
 
   return (
@@ -191,7 +209,7 @@ export default function ProductForm({ mode, productId }: Props) {
 
         {/* Product Type */}
         <Divider>🏷 Product Type</Divider>
-        <Form.Item label="Choose Type (EN — MR)">
+        {/* <Form.Item label="Choose Type (EN — MR)">
           <Select
             showSearch
             placeholder="Select product type"
@@ -206,7 +224,33 @@ export default function ProductForm({ mode, productId }: Props) {
               (option?.label as string).toLowerCase().includes(input.toLowerCase())
             }
           />
+        </Form.Item> */}
+
+        <Form.Item
+          label="Choose Type (EN — MR)"
+          name="selectedTypeIndex"
+          getValueProps={() => ({
+            value: getSelectedTypeIndex(),
+          })}
+          getValueFromEvent={(value) => {
+            setTypeByIndex(value);
+            return value;
+          }}
+        >
+          <Select
+            showSearch
+            placeholder="Select product type"
+            allowClear
+            options={PRODUCT_TYPES.map((t, i) => ({
+              label: `${t.en} — ${t.mr}`,
+              value: i,
+            }))}
+            filterOption={(input, option) =>
+              (option?.label as string).toLowerCase().includes(input.toLowerCase())
+            }
+          />
         </Form.Item>
+
 
         <Divider>🌐 ENGLISH Content</Divider>
         <Form.Item name={["productName", "en"]} label="Product Name (English)">
@@ -215,9 +259,9 @@ export default function ProductForm({ mode, productId }: Props) {
         <Form.Item name={["productDescription", "en"]} label="Description (English)">
           <Input.TextArea rows={3} />
         </Form.Item>
-        <Form.Item name={["productType", "en"]} label="Product Type (English)">
+        {/* <Form.Item name={["productType", "en"]} label="Product Type (English)">
           <Input placeholder="e.g., Insecticide" />
-        </Form.Item>
+        </Form.Item> */}
 
         <Divider>🌾 मराठी माहिती</Divider>
         <Form.Item name={["productName", "mr"]} label="उत्पादनाचे नाव (मराठी)">
@@ -226,9 +270,9 @@ export default function ProductForm({ mode, productId }: Props) {
         <Form.Item name={["productDescription", "mr"]} label="वर्णन (मराठी)">
           <Input.TextArea rows={3} />
         </Form.Item>
-        <Form.Item name={["productType", "mr"]} label="उत्पादन प्रकार (मराठी)">
+        {/* <Form.Item name={["productType", "mr"]} label="उत्पादन प्रकार (मराठी)">
           <Input placeholder="उदा., कीटकनाशक" />
-        </Form.Item>
+        </Form.Item> */}
 
         <Divider>🖼 Product Images</Divider>
         <Form.List name="productImages">
