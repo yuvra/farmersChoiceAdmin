@@ -34,7 +34,9 @@ function useDebouncedValue<T>(value: T, delay = 300) {
 }
 
 const ProductTable = ({ products, showFilter = true }: Props) => {
-    const [selectedType, setSelectedType] = useState<string | null>("insecticides");
+    const [selectedType, setSelectedType] = useState<string | null>(
+        "insecticides"
+    );
     const [query, setQuery] = useState("");
     const [showOnly, setShowOnly] = useState<"all" | "true" | "false">("true");
     const [stockFilter, setStockFilter] = useState<"all" | "true" | "false">(
@@ -73,21 +75,35 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
         }));
     }, [products]);
 
+    const fuseVariants_1 = {
+        includeScore: true,
+        threshold: 0.45,
+        distance: 150, // helps with typos
+        ignoreLocation: true,
+        minMatchCharLength: 2,
+        keys: [
+            { name: "productName.en", weight: 0.7 },
+            { name: "vendor", weight: 0.2 },
+            { name: "productType.en", weight: 0.05 },
+            { name: "_desc", weight: 0.025 },
+            { name: "_chem", weight: 0.015 },
+            { name: "_variants", weight: 0.01 },
+        ],
+    };
+
+    const fuseVariants_2 = {
+        includeScore: true,
+        threshold: 0.4, // a bit stricter now that we only search name
+        distance: 100,
+        ignoreLocation: true,
+        minMatchCharLength: 2,
+        keys: [
+            { name: "productName.en", weight: 1 }, // 100% on name
+        ],
+    };
+
     const fuse = useMemo(() => {
-        return new Fuse(indexList, {
-            includeScore: true,
-            threshold: 0.35,
-            ignoreLocation: true,
-            minMatchCharLength: 2,
-            keys: [
-                "productName.en",
-                "vendor",
-                "productType.en",
-                "_desc",
-                "_chem",
-                "_variants",
-            ],
-        });
+        return new Fuse(indexList, fuseVariants_2);
     }, [indexList]);
 
     const displayedProducts = useMemo(() => {
@@ -95,6 +111,7 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
 
         const q = debouncedQuery.trim();
         if (q) {
+            // 1) Run fuzzy search across all products (ignoring type at this step)
             const results = fuse.search(q);
             list = results.map((r) => r.item);
         }
@@ -201,7 +218,7 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
                             hoverable
                             cover={
                                 product.productImages?.length ? (
-                                    <Carousel autoplay autoplaySpeed={5000}>
+                                    <Carousel>
                                         {product.productImages.map(
                                             (img, idx) => (
                                                 <div key={idx}>
@@ -245,7 +262,7 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
                                     Rank: {product.position}
                                 </span>
                             </Title>
-                
+
                             <Paragraph type="secondary">
                                 {product.vendor}
                             </Paragraph>
@@ -253,8 +270,10 @@ const ProductTable = ({ products, showFilter = true }: Props) => {
                                 {product.productType?.en}
                             </Tag>
 
-							<Tag color="gray">
-                                {product.isOutOfStock ? "Out of Stock" : "In Stock"}
+                            <Tag color="gray">
+                                {product.isOutOfStock
+                                    ? "Out of Stock"
+                                    : "In Stock"}
                             </Tag>
 
                             <Divider style={{ margin: "10px 0" }} />
