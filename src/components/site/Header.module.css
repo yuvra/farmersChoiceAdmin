@@ -1,0 +1,142 @@
+.header {
+	position: sticky;
+	top: 0;
+	z-index: 50;
+	background: rgba(247, 250, 247, 0.86);
+	backdrop-filter: blur(14px);
+	border-bottom: 1px solid transparent;
+	transition:
+		background 0.2s ease,
+		border-color 0.2s ease,
+		box-shadow 0.2s ease;
+}
+
+.scrolled {
+	border-bottom-color: var(--fc-line);
+	box-shadow: 0 8px 30px rgba(8, 28, 21, 0.06);
+	background: rgba(255, 255, 255, 0.94);
+}
+
+.inner {
+	min-height: 72px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.65rem;
+	text-decoration: none;
+	color: var(--fc-forest-deep);
+	font-family: var(--font-display), Georgia, serif;
+	font-weight: 600;
+	font-size: 1.15rem;
+	letter-spacing: -0.02em;
+}
+
+.logoMark {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	display: grid;
+	place-items: center;
+	background: linear-gradient(145deg, #2d6a4f, #1b4332);
+	color: #fff;
+	font-family: var(--font-sans), sans-serif;
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+}
+
+.desktopNav {
+	display: none;
+	align-items: center;
+	gap: 1.15rem;
+}
+
+.desktopNav a {
+	text-decoration: none;
+	color: var(--fc-muted);
+	font-size: 0.9rem;
+	font-weight: 550;
+}
+
+.desktopNav a:hover {
+	color: var(--fc-forest);
+}
+
+.desktopActions {
+	display: none;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.adminLink {
+	font-size: 0.85rem;
+	color: var(--fc-muted);
+	text-decoration: none;
+	font-weight: 550;
+}
+
+.adminLink:hover {
+	color: var(--fc-forest);
+}
+
+.menuBtn {
+	width: 42px;
+	height: 42px;
+	border-radius: 10px;
+	border: 1px solid var(--fc-line);
+	background: #fff;
+	display: grid;
+	place-content: center;
+	gap: 5px;
+	cursor: pointer;
+}
+
+.menuBtn span {
+	display: block;
+	width: 18px;
+	height: 2px;
+	background: var(--fc-forest);
+}
+
+.mobilePanel {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 72px;
+	background: #fff;
+	border-bottom: 1px solid var(--fc-line);
+	padding: 1rem 1.25rem 1.4rem;
+	display: grid;
+	gap: 0.85rem;
+	box-shadow: var(--fc-shadow);
+}
+
+.mobilePanel nav {
+	display: grid;
+	gap: 0.35rem;
+}
+
+.mobilePanel nav a {
+	padding: 0.7rem 0.2rem;
+	text-decoration: none;
+	color: var(--fc-forest);
+	font-weight: 600;
+	border-bottom: 1px solid var(--fc-line);
+}
+
+@media (min-width: 980px) {
+	.desktopNav,
+	.desktopActions {
+		display: flex;
+	}
+	.menuBtn,
+	.mobilePanel {
+		display: none;
+	}
+}

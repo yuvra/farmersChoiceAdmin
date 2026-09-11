@@ -30,8 +30,13 @@ export default function ClientLayout({
 }) {
     const pathname = usePathname();
 
-    // Don't show layout on login page
-    if (pathname === "/login") {
+    // Public marketing / policy pages — no admin chrome
+    if (
+        pathname === "/" ||
+        pathname === "/login" ||
+        pathname?.startsWith("/policies") ||
+        pathname?.startsWith("/catalogue")
+    ) {
         return <>{children}</>;
     }
 

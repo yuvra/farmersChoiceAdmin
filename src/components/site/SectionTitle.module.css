@@ -1,0 +1,13 @@
+.wrap {
+	margin-bottom: 2rem;
+	max-width: 42rem;
+}
+
+.center {
+	margin-inline: auto;
+	text-align: center;
+}
+
+.center :global(.fcLead) {
+	margin-inline: auto;
+}

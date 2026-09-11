@@ -1,0 +1,37 @@
+.band {
+	background: linear-gradient(135deg, #1b4332, #081c15);
+	color: #fff;
+	padding: clamp(3.2rem, 6vw, 4.5rem) 0;
+}
+
+.inner {
+	display: grid;
+	gap: 1.5rem;
+}
+
+.title {
+	margin: 0 0 0.7rem;
+	font-family: var(--font-display), Georgia, serif;
+	font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+	letter-spacing: -0.02em;
+}
+
+.lead {
+	margin: 0;
+	max-width: 36rem;
+	color: rgba(255, 255, 255, 0.8);
+	line-height: 1.6;
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+}
+
+@media (min-width: 860px) {
+	.inner {
+		grid-template-columns: 1.3fr auto;
+		align-items: center;
+	}
+}

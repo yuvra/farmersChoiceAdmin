@@ -1,34 +1,39 @@
-// app/layout.tsx
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Manrope } from "next/font/google";
 import "./globals.css";
 import ClientLayout from "./client-layout";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const display = Fraunces({
+	variable: "--font-display",
+	subsets: ["latin"],
+	weight: ["500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const sans = Manrope({
+	variable: "--font-sans",
+	subsets: ["latin"],
+	weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Farmers Choice Product Manager",
-  description: "Manage agricultural products with multilingual support",
+	title: {
+		default: "Farmers Choice | Agriculture & Organic Farming Products",
+		template: "%s | Farmers Choice",
+	},
+	description:
+		"Farmers Choice provides quality agricultural inputs including organic fertilizers, bio fertilizers, micronutrients, soil health products, crop nutrition and sustainable farming solutions.",
 };
 
 export default function RootLayout({
-  children,
+	children,
 }: {
-  children: React.ReactNode;
+	children: React.ReactNode;
 }) {
-  return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <ClientLayout>{children}</ClientLayout>
-      </body>
-    </html>
-  );
+	return (
+		<html lang="en">
+			<body className={`${display.variable} ${sans.variable}`}>
+				<ClientLayout>{children}</ClientLayout>
+			</body>
+		</html>
+	);
 }
