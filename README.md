@@ -16,6 +16,20 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Delhivery (Create shipment from orders)
+
+Add these to `.env.local` (never commit secrets), then restart `npm run dev`:
+
+```bash
+DELHIVERY_API_TOKEN=your_token
+DELHIVERY_PICKUP_LOCATION=ExactWarehouseNameFromDelhivery
+# optional
+DELHIVERY_DEFAULT_WEIGHT_GM=500
+```
+
+- `DELHIVERY_PICKUP_LOCATION` must match the warehouse name registered on Delhivery **exactly** (case-sensitive).
+- On **Show Orders**, open a customer → order card → **Create on Delhivery** to auto-create a forward shipment from the order address.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

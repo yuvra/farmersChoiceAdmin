@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getDocs, updateDoc, doc, collection } from "firebase/firestore";
+import {
+	getDocs,
+	updateDoc,
+	doc,
+	collection,
+	type QueryDocumentSnapshot,
+	type DocumentData,
+} from "firebase/firestore";
 import { CopyOutlined } from "@ant-design/icons";
 import { db } from "@/firebase/config";
 import {
@@ -21,11 +28,16 @@ import {
 	Tooltip,
 	Button,
 	Collapse,
+	DatePicker,
+	App,
+	Alert,
 } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { Search } = Input;
+const { RangePicker } = DatePicker;
 
 type OrderStatus =
 	| "Processing your order"
@@ -34,7 +46,44 @@ type OrderStatus =
 	| "Delivered"
 	| "Cancelled";
 
+type DateSortOrder = "newest" | "oldest";
+
+const PICKUP_LOCATIONS = [
+	"Rahuri",
+	"Gagangari krushi sewa kendra",
+	"Dronagiri",
+] as const;
+
+const DEFAULT_PICKUP_LOCATION = "Rahuri";
+
+const getOrderDate = (createdAt: any): Date | null => {
+	if (!createdAt) return null;
+	const raw = createdAt?.toDate?.() || createdAt;
+	const date = new Date(raw);
+	return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatOrderDate = (createdAt: any): string => {
+	const date = getOrderDate(createdAt);
+	if (!date) return "N/A";
+	return dayjs(date).format("DD MMM YYYY, hh:mm A");
+};
+
+const getLatestOrderDate = (user: any): Date | null => {
+	const orders = user?.orders ?? [];
+	let latest: Date | null = null;
+	for (const order of orders) {
+		const date = getOrderDate(order.createdAt);
+		if (!date) continue;
+		if (!latest || date.getTime() > latest.getTime()) {
+			latest = date;
+		}
+	}
+	return latest;
+};
+
 export default function OrdersPage() {
+	const { modal, message } = App.useApp();
 	const [users, setUsers] = useState<any[]>([]);
 	const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
 	const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -42,6 +91,26 @@ export default function OrdersPage() {
 	const [searchValue, setSearchValue] = useState("");
 	const [statusFilter, setStatusFilter] = useState<OrderStatus | null>(null);
 	const [cityFilter, setCityFilter] = useState<string | null>(null);
+	const [dateSort, setDateSort] = useState<DateSortOrder>("newest");
+	const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(
+		null
+	);
+	const [creatingShipmentFor, setCreatingShipmentFor] = useState<string | null>(
+		null
+	);
+	const [delhiveryConfirm, setDelhiveryConfirm] = useState<{
+		userId: string;
+		orderId: string;
+		pincode: string;
+	} | null>(null);
+	const [pickupLocation, setPickupLocation] = useState<string>(
+		DEFAULT_PICKUP_LOCATION
+	);
+	const [pinCheck, setPinCheck] = useState<{
+		loading: boolean;
+		serviceable: boolean | null;
+		detail: string;
+	}>({ loading: false, serviceable: null, detail: "" });
 
 	// Fetch orders
 	useEffect(() => {
@@ -49,31 +118,26 @@ export default function OrdersPage() {
 			const snap = await getDocs(
 				collection(db, "userProfilesAndOrderStatus")
 			);
-			const userList = snap.docs.map((d) => ({
-				id: d.id,
-				...d.data(),
-			}));
-
-			// Sort by latest order date
-			userList.sort((a: any, b: any) => {
-				const aDate = new Date(
-					a.orders?.[a.orders.length - 1]?.createdAt?.toDate?.() ||
-						a.orders?.[a.orders.length - 1]?.createdAt ||
-						0
-				);
-				const bDate = new Date(
-					b.orders?.[b.orders.length - 1]?.createdAt?.toDate?.() ||
-						b.orders?.[b.orders.length - 1]?.createdAt ||
-						0
-				);
-				return bDate.getTime() - aDate.getTime();
-			});
+			const userList = snap.docs.map(
+				(d: QueryDocumentSnapshot<DocumentData>) => ({
+					id: d.id,
+					...d.data(),
+				})
+			);
 
 			setUsers(userList);
-			setFilteredUsers(userList);
+			applyFilters(
+				searchValue,
+				statusFilter,
+				cityFilter,
+				dateSort,
+				dateRange,
+				userList
+			);
 		};
 
 		fetchOrders();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	const updateStatus = async (
@@ -91,14 +155,218 @@ export default function OrdersPage() {
 		const updatedUser = { ...user, orders: updatedOrders };
 		const nextUsers = users.map((u) => (u.id === userId ? updatedUser : u));
 		setUsers(nextUsers);
-		applyFilters(searchValue, statusFilter, cityFilter, nextUsers);
+		applyFilters(
+			searchValue,
+			statusFilter,
+			cityFilter,
+			dateSort,
+			dateRange,
+			nextUsers
+		);
 		setSelectedUser(updatedUser);
+	};
+
+	const patchOrderDelhivery = (
+		userId: string,
+		orderId: string,
+		waybill: string | null,
+		createdAt: string | null
+	) => {
+		const nextUsers = users.map((u) => {
+			if (u.id !== userId) return u;
+			const updatedOrders = (u.orders ?? []).map((order: any) => {
+				if (order.id !== orderId) return order;
+				const next = { ...order };
+				if (waybill) {
+					next.delhiveryWaybill = waybill;
+					next.delhiveryCreatedAt = createdAt;
+				} else {
+					delete next.delhiveryWaybill;
+					delete next.delhiveryCreatedAt;
+					delete next.delhiveryOrderRef;
+				}
+				return next;
+			});
+			return { ...u, orders: updatedOrders };
+		});
+		setUsers(nextUsers);
+		applyFilters(
+			searchValue,
+			statusFilter,
+			cityFilter,
+			dateSort,
+			dateRange,
+			nextUsers
+		);
+		const updatedSelected = nextUsers.find((u) => u.id === userId) || null;
+		setSelectedUser(updatedSelected);
+	};
+
+	const clearDelhiveryShipment = (userId: string, orderId: string) => {
+		modal.confirm({
+			title: "Create again on Delhivery?",
+			content:
+				"This clears the saved Delhivery waybill on this order so you can create a new shipment. Only do this if you already deleted it on Delhivery.",
+			okText: "Clear & create again",
+			cancelText: "Cancel",
+			onOk: async () => {
+				const user = users.find((u) => u.id === userId);
+				const updatedOrders = (user?.orders ?? []).map((order: any) => {
+					if (order.id !== orderId) return order;
+					const next = { ...order };
+					delete next.delhiveryWaybill;
+					delete next.delhiveryCreatedAt;
+					delete next.delhiveryOrderRef;
+					return next;
+				});
+				await updateDoc(doc(db, "userProfilesAndOrderStatus", userId), {
+					orders: updatedOrders,
+				});
+				patchOrderDelhivery(userId, orderId, null, null);
+				message.success("Delhivery link cleared. You can create again.");
+				createOnDelhivery(userId, orderId);
+			},
+		});
+	};
+
+	const resolveOrderPincode = (userId: string, orderId: string) => {
+		const user = users.find((u) => u.id === userId);
+		const order = (user?.orders ?? []).find((o: any) => o.id === orderId);
+		const profile = user?.profile?.[0] || {};
+		const addr = order?.shippingAddress || order?.address || profile;
+		return String(addr?.pincode || profile?.pincode || "").trim();
+	};
+
+	const checkPincodeServiceability = async (pincode: string) => {
+		if (!/^\d{6}$/.test(pincode)) {
+			setPinCheck({
+				loading: false,
+				serviceable: false,
+				detail: pincode
+					? `Invalid pincode: ${pincode}`
+					: "Order is missing a destination pincode",
+			});
+			return;
+		}
+
+		setPinCheck({
+			loading: true,
+			serviceable: null,
+			detail: `Checking pincode ${pincode}…`,
+		});
+
+		try {
+			const res = await fetch(
+				`/api/v1/delhivery/pincode?pin_code=${encodeURIComponent(pincode)}`
+			);
+			const data = await res.json().catch(() => ({}));
+			const codes = data?.delivery_codes;
+			const postal = codes?.[0]?.postal_code;
+			if (!Array.isArray(codes) || !codes.length || !postal) {
+				setPinCheck({
+					loading: false,
+					serviceable: false,
+					detail: `Pincode ${pincode} is not serviceable on Delhivery`,
+				});
+				return;
+			}
+
+			const prepaidOk = String(postal.pre_paid || "").toUpperCase() === "Y";
+			const codOk = String(postal.cod || "").toUpperCase() === "Y";
+			setPinCheck({
+				loading: false,
+				serviceable: prepaidOk || codOk,
+				detail: prepaidOk || codOk
+					? `Pincode ${pincode} is serviceable (${postal.district || postal.state_code || "OK"})`
+					: `Pincode ${pincode} is not serviceable for Prepaid/COD`,
+			});
+		} catch {
+			setPinCheck({
+				loading: false,
+				serviceable: null,
+				detail: `Could not verify pincode ${pincode}. You can still try creating.`,
+			});
+		}
+	};
+
+	const createOnDelhivery = (userId: string, orderId: string) => {
+		const pincode = resolveOrderPincode(userId, orderId);
+		setPickupLocation(DEFAULT_PICKUP_LOCATION);
+		setDelhiveryConfirm({ userId, orderId, pincode });
+		void checkPincodeServiceability(pincode);
+	};
+
+	const submitDelhiveryShipment = async () => {
+		if (!delhiveryConfirm) return;
+		if (!pickupLocation.trim()) {
+			message.error("Please select a pickup location");
+			return;
+		}
+		if (pinCheck.serviceable === false) {
+			message.error(
+				pinCheck.detail ||
+					"Destination pincode is not serviceable on Delhivery"
+			);
+			return;
+		}
+
+		const { userId, orderId } = delhiveryConfirm;
+		setCreatingShipmentFor(orderId);
+		try {
+			const res = await fetch("/api/v1/delhivery/create-shipment", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					userId,
+					orderId,
+					pickupLocation: pickupLocation.trim(),
+				}),
+			});
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				message.error(
+					data?.error || "Failed to create Delhivery shipment"
+				);
+				return;
+			}
+			patchOrderDelhivery(
+				userId,
+				orderId,
+				data.waybill,
+				data.delhiveryCreatedAt || new Date().toISOString()
+			);
+			message.success(`Delhivery waybill: ${data.waybill}`);
+			setDelhiveryConfirm(null);
+		} catch (err) {
+			message.error(
+				err instanceof Error
+					? err.message
+					: "Failed to create Delhivery shipment"
+			);
+		} finally {
+			setCreatingShipmentFor(null);
+		}
+	};
+
+	const orderMatchesDateRange = (
+		order: any,
+		range: [Dayjs | null, Dayjs | null] | null
+	) => {
+		if (!range?.[0] || !range?.[1]) return true;
+		const orderDate = getOrderDate(order.createdAt);
+		if (!orderDate) return false;
+		const start = range[0].startOf("day").valueOf();
+		const end = range[1].endOf("day").valueOf();
+		const time = orderDate.getTime();
+		return time >= start && time <= end;
 	};
 
 	const applyFilters = (
 		search: string,
 		status: OrderStatus | null,
 		city: string | null,
+		sort: DateSortOrder,
+		range: [Dayjs | null, Dayjs | null] | null,
 		sourceUsers = users
 	) => {
 		let filtered = [...sourceUsers];
@@ -123,22 +391,48 @@ export default function OrdersPage() {
 			);
 		}
 
+		if (range?.[0] && range?.[1]) {
+			filtered = filtered.filter((user) =>
+				(user.orders ?? []).some((order: any) =>
+					orderMatchesDateRange(order, range)
+				)
+			);
+		}
+
+		filtered.sort((a: any, b: any) => {
+			const aTime = getLatestOrderDate(a)?.getTime() || 0;
+			const bTime = getLatestOrderDate(b)?.getTime() || 0;
+			return sort === "newest" ? bTime - aTime : aTime - bTime;
+		});
+
 		setFilteredUsers(filtered);
 	};
 
 	const handleSearch = (value: string) => {
 		setSearchValue(value);
-		applyFilters(value, statusFilter, cityFilter);
+		applyFilters(value, statusFilter, cityFilter, dateSort, dateRange);
 	};
 
 	const handleStatusFilter = (value: OrderStatus | null) => {
 		setStatusFilter(value);
-		applyFilters(searchValue, value, cityFilter);
+		applyFilters(searchValue, value, cityFilter, dateSort, dateRange);
 	};
 
 	const handleCityFilter = (value: string | null) => {
 		setCityFilter(value);
-		applyFilters(searchValue, statusFilter, value);
+		applyFilters(searchValue, statusFilter, value, dateSort, dateRange);
+	};
+
+	const handleDateSort = (value: DateSortOrder) => {
+		setDateSort(value);
+		applyFilters(searchValue, statusFilter, cityFilter, value, dateRange);
+	};
+
+	const handleDateRange = (
+		value: [Dayjs | null, Dayjs | null] | null
+	) => {
+		setDateRange(value);
+		applyFilters(searchValue, statusFilter, cityFilter, dateSort, value);
 	};
 
 	const getStatusTag = (status: OrderStatus) => {
@@ -195,16 +489,16 @@ export default function OrdersPage() {
 	const formatAddressPlain = (addr?: any) => {
 		if (!addr) return "";
 		const parts = [
-			addr?.name,
-			addr?.flat,
-			addr?.street,
-			addr?.phone,
-			addr?.landmark,
-			addr?.city,
-			addr?.district,
-			addr?.pincode,
-			addr?.state,
-			addr?.country,
+			addr?.name ? `Name: ${addr.name}` : null,
+			addr?.phone ? `Phone: ${addr.phone}` : null,
+			addr?.flat ? `Flat / House No.: ${addr.flat}` : null,
+			addr?.street ? `Street: ${addr.street}` : null,
+			addr?.landmark ? `Landmark: ${addr.landmark}` : null,
+			addr?.city ? `City: ${addr.city}` : null,
+			addr?.district ? `District: ${addr.district}` : null,
+			addr?.pincode ? `Pincode: ${addr.pincode}` : null,
+			addr?.state ? `State: ${addr.state}` : null,
+			addr?.country ? `Country: ${addr.country}` : null,
 		].filter(Boolean);
 		return parts.join(", ");
 	};
@@ -232,13 +526,13 @@ export default function OrdersPage() {
 				labelStyle={{ color: "#fff" }}
 				contentStyle={{ color: "#fff" }}
 			>
-				{fields
-					.filter((f) => f.value)
-					.map((f) => (
-						<Descriptions.Item key={f.key} label={f.label}>
-							{f.value}
-						</Descriptions.Item>
-					))}
+				{fields.map((f) => (
+					<Descriptions.Item key={f.key} label={f.label}>
+						{f.value || (
+							<span style={{ opacity: 0.45 }}>—</span>
+						)}
+					</Descriptions.Item>
+				))}
 			</Descriptions>
 		);
 	};
@@ -286,6 +580,27 @@ export default function OrdersPage() {
 						</Option>
 					))}
 				</Select>
+
+				<Select
+					value={dateSort}
+					style={{ width: 180 }}
+					onChange={(val) => handleDateSort(val as DateSortOrder)}
+				>
+					<Option value="newest">Newest first</Option>
+					<Option value="oldest">Oldest first</Option>
+				</Select>
+
+				<RangePicker
+					value={dateRange}
+					onChange={(dates) =>
+						handleDateRange(
+							dates as [Dayjs | null, Dayjs | null] | null
+						)
+					}
+					allowClear
+					format="DD MMM YYYY"
+					placeholder={["From date", "To date"]}
+				/>
 			</Space>
 
 			{/* NEW: Quick Stats */}
@@ -335,6 +650,7 @@ export default function OrdersPage() {
 				) : (
 					filteredUsers.map((user) => {
 						const profile = user.profile?.[0] || {};
+						const latestOrderDate = getLatestOrderDate(user);
 						return (
 							<Col key={user.id} xs={24} sm={12} md={8}>
 								<Card
@@ -360,6 +676,16 @@ export default function OrdersPage() {
 										<Text strong>
 											🛒 Orders:{" "}
 											{user.orders?.length || 0}
+										</Text>
+									</p>
+									<p>
+										<Text type="secondary">
+											📅 Latest order:{" "}
+											{latestOrderDate
+												? dayjs(latestOrderDate).format(
+														"DD MMM YYYY"
+												  )
+												: "N/A"}
 										</Text>
 									</p>
 								</Card>
@@ -474,14 +800,13 @@ export default function OrdersPage() {
 				)}
 				{/* Orders */}
 				{[...(selectedUser?.orders || [])]
+					.filter((order) => orderMatchesDateRange(order, dateRange))
 					.sort((a, b) => {
-						const aDate = new Date(
-							a.createdAt?.toDate?.() || a.createdAt || 0
-						);
-						const bDate = new Date(
-							b.createdAt?.toDate?.() || b.createdAt || 0
-						);
-						return bDate.getTime() - aDate.getTime();
+						const aTime = getOrderDate(a.createdAt)?.getTime() || 0;
+						const bTime = getOrderDate(b.createdAt)?.getTime() || 0;
+						return dateSort === "newest"
+							? bTime - aTime
+							: aTime - bTime;
 					})
 					.map((order: any, idx: number) => {
 						const shippingAddr =
@@ -498,11 +823,25 @@ export default function OrdersPage() {
 								style={{ marginBottom: 16 }}
 							>
 								<p>
+									Date of Order:{" "}
+									<Text strong>
+										{formatOrderDate(order.createdAt)}
+									</Text>
+								</p>
+								<p>
 									Status:{" "}
 									{getStatusTag(order.status as OrderStatus)}
 								</p>
 								<p>Payment: {order.paymentMethod}</p>
 								<p>Amount: ₹{order.totalAmount}</p>
+								{order.delhiveryWaybill && (
+									<p>
+										Delhivery Waybill:{" "}
+										<Text strong copyable>
+											{order.delhiveryWaybill}
+										</Text>
+									</p>
+								)}
 								{/* Items */}
 								<Row gutter={[12, 12]}>
 									{(order.items ?? []).map(
@@ -667,34 +1006,128 @@ export default function OrdersPage() {
 								</Collapse>
 								{/* Status updater */}
 								<div style={{ marginTop: 12 }}>
-									<Text strong>Update Status:</Text>
-									<Select
-										style={{ marginLeft: 12, width: 200 }}
-										value={order.status}
-										onChange={(val) =>
-											updateStatus(
-												selectedUser.id,
-												order.id,
-												val as OrderStatus
-											)
-										}
-									>
-										<Option value="Processing your order">
-											Processing
-										</Option>
-										<Option value="Packed">Packed</Option>
-										<Option value="Shipped">Shipped</Option>
-										<Option value="Delivered">
-											Delivered
-										</Option>
-										<Option value="Cancelled">
-											Cancelled
-										</Option>
-									</Select>
+									<Space wrap>
+										<Text strong>Update Status:</Text>
+										<Select
+											style={{ width: 200 }}
+											value={order.status}
+											onChange={(val) =>
+												updateStatus(
+													selectedUser.id,
+													order.id,
+													val as OrderStatus
+												)
+											}
+										>
+											<Option value="Processing your order">
+												Processing
+											</Option>
+											<Option value="Packed">Packed</Option>
+											<Option value="Shipped">Shipped</Option>
+											<Option value="Delivered">
+												Delivered
+											</Option>
+											<Option value="Cancelled">
+												Cancelled
+											</Option>
+										</Select>
+										{order.delhiveryWaybill ? (
+											<>
+												<Button type="primary" disabled>
+													Created on Delhivery
+												</Button>
+												<Button
+													onClick={() =>
+														clearDelhiveryShipment(
+															selectedUser.id,
+															order.id
+														)
+													}
+												>
+													Create again
+												</Button>
+											</>
+										) : (
+											<Button
+												type="primary"
+												loading={
+													creatingShipmentFor ===
+													order.id
+												}
+												onClick={() =>
+													createOnDelhivery(
+														selectedUser.id,
+														order.id
+													)
+												}
+											>
+												Create on Delhivery
+											</Button>
+										)}
+									</Space>
 								</div>
 							</Card>
 						);
 					})}
+			</Modal>
+
+			<Modal
+				title="Create shipment on Delhivery"
+				open={Boolean(delhiveryConfirm)}
+				onCancel={() => {
+					if (creatingShipmentFor) return;
+					setDelhiveryConfirm(null);
+					setPinCheck({
+						loading: false,
+						serviceable: null,
+						detail: "",
+					});
+				}}
+				okText="Create"
+				cancelText="Cancel"
+				confirmLoading={Boolean(creatingShipmentFor) || pinCheck.loading}
+				okButtonProps={{
+					disabled: pinCheck.loading || pinCheck.serviceable === false,
+				}}
+				onOk={submitDelhiveryShipment}
+				destroyOnClose
+			>
+				<p style={{ marginBottom: 12 }}>
+					Select the pickup location, then create the forward shipment
+					with this order’s customer and address details.
+				</p>
+				<p style={{ marginBottom: 12 }}>
+					<Text type="secondary">Destination pincode: </Text>
+					<Text strong>{delhiveryConfirm?.pincode || "N/A"}</Text>
+				</p>
+				{pinCheck.detail && (
+					<Alert
+						style={{ marginBottom: 12 }}
+						type={
+							pinCheck.loading
+								? "info"
+								: pinCheck.serviceable === false
+									? "error"
+									: pinCheck.serviceable === true
+										? "success"
+										: "warning"
+						}
+						showIcon
+						message={pinCheck.detail}
+					/>
+				)}
+				<Text strong style={{ display: "block", marginBottom: 8 }}>
+					Pickup location
+				</Text>
+				<Select
+					value={pickupLocation}
+					onChange={(val) => setPickupLocation(val)}
+					style={{ width: "100%" }}
+					options={PICKUP_LOCATIONS.map((loc) => ({
+						value: loc,
+						label: loc,
+					}))}
+				/>
 			</Modal>
 		</div>
 	);
